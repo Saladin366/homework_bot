@@ -23,11 +23,24 @@ RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
-HOMEWORK_STATUSES = {
+HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена, в ней нашлись ошибки.'
 }
+
+STATUS_CHANGE = 'Изменился статус проверки работы "{name}". {value}'
+MESSAGE_OK = 'Бот отправил сообщение: "{mes}"'
+MESSAGE_ERROR = 'Сбой при отправке сообщения: "{mes}". Текст ошибки: "{err}".'
+START_ERROR = ('Отсутствует обязательная переменная окружения "{param}".'
+               + ' Программа принудительно остановлена.')
+PROGRAM_ERROR = 'Сбой в работе программы:'
+API_ERROR = (f'{PROGRAM_ERROR} Эндпоинт {ENDPOINT} недоступен. Код ответа API:'
+             + ' {err}.')
+KEY_ERROR = f'{PROGRAM_ERROR} Ответ API не содержит ключ ' + '"{err}".'
+STATUS_ERROR = (f'{PROGRAM_ERROR} В ответе API обнаружен недокументированный'
+                + ' статус домашней работы "{err}".')
+UNKNOWN_ERROR = f'{PROGRAM_ERROR} ' + '{err}.'
 
 
 class ServerError(Exception):
@@ -52,16 +65,20 @@ def send_message(bot, message):
     """Отправляет в Telegram сообщение 'message'."""
     try:
         bot.send_message(CHAT_ID, message)
-        logging.info(f'Бот отправил сообщение: "{message}"')
-    except telegram.error.TelegramError as e:
-        logging.error(f'Сбой при отправке сообщения: "{message}". '
-                      f' Текст ошибки: "{e}"')
+        logging.info(MESSAGE_OK.format(mes=message))
+    except telegram.error.TelegramError as er:
+        logging.error(MESSAGE_ERROR.format(mes=message, err=er))
 
 
 def get_api_answer(url, current_timestamp):
     """Отправляет запрос к API и возвращает ответ."""
+    if current_timestamp is None:
+        current_timestamp = int(time.time())
     payload = {'from_date': current_timestamp}
-    response = requests.get(url, headers=HEADERS, params=payload)
+    try:
+        response = requests.get(url, headers=HEADERS, params=payload)
+    except Exception as er:
+        raise ServerError(er)
     if response.status_code != HTTPStatus.OK:
         raise ServerError(response.status_code)
     return response.json()
@@ -69,11 +86,16 @@ def get_api_answer(url, current_timestamp):
 
 def parse_status(homework):
     """Анализирует статус задачи."""
-    verdict = HOMEWORK_STATUSES.get(homework['status'], None)
+    status = homework.get('status', None)
+    homework_name = homework.get('homework_name', None)
+    if status is None:
+        raise KeysAnswerError('status')
+    if homework_name is None:
+        raise KeysAnswerError('homework_name')
+    verdict = HOMEWORK_VERDICTS.get(status, None)
     if verdict is None:
-        raise StatusHomeworkError(homework['status'])
-    homework_name = homework['homework_name']
-    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+        raise StatusHomeworkError(status)
+    return STATUS_CHANGE.format(name=homework_name, value=verdict)
 
 
 def check_response(response):
@@ -99,7 +121,7 @@ def _handler_exceptions(bot, message, last_message):
     logging.error(message)
     if message != last_message:
         send_message(bot, message)
-    return message
+    return message, int(time.time())
 
 
 def main():
@@ -109,8 +131,7 @@ def main():
               'CHAT_ID': CHAT_ID}
     for par in params:
         if params[par] is None:
-            logging.critical('Отсутствует обязательная переменная окружения '
-                             f'"{par}". Программа принудительно остановлена.')
+            logging.critical(START_ERROR.format(param=par))
             sys.exit()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
@@ -121,21 +142,22 @@ def main():
             messages, current_timestamp = check_response(response)
             for message in messages:
                 send_message(bot, message)
-        except ServerError as e:
-            message = (f'Сбой в работе программы: Эндпоинт {ENDPOINT} '
-                       f'недоступен. Код ответа API: {e}')
-            last_message = _handler_exceptions(bot, message, last_message)
-        except KeysAnswerError as e:
-            message = ('Сбой в работе программы: Ответ API не содержит ключ'
-                       f' "{e}".')
-            last_message = _handler_exceptions(bot, message, last_message)
-        except StatusHomeworkError as e:
-            message = ('Сбой в работе программы: В ответе API обнаружен '
-                       f'недокументированный статус домашней работы "{e}".')
-            last_message = _handler_exceptions(bot, message, last_message)
-        except Exception as e:
-            message = f'Сбой в работе программы: {e}'
-            last_message = _handler_exceptions(bot, message, last_message)
+        except ServerError as er:
+            message = API_ERROR.format(err=er)
+            last_message, current_timestamp = _handler_exceptions(bot, message,
+                                                                  last_message)
+        except KeysAnswerError as er:
+            message = KEY_ERROR.format(err=er)
+            last_message, current_timestamp = _handler_exceptions(bot, message,
+                                                                  last_message)
+        except StatusHomeworkError as er:
+            message = STATUS_ERROR.format(err=er)
+            last_message, current_timestamp = _handler_exceptions(bot, message,
+                                                                  last_message)
+        except Exception as er:
+            message = UNKNOWN_ERROR.format(err=er)
+            last_message, current_timestamp = _handler_exceptions(bot, message,
+                                                                  last_message)
         finally:
             time.sleep(RETRY_TIME)
 
