@@ -139,6 +139,7 @@ def main():
     current_timestamp = int(time.time())
     last_message = ''
     while True:
+        time.sleep(RETRY_TIME)
         try:
             response = get_api_answer(ENDPOINT, current_timestamp)
             messages, current_timestamp = check_response(response)
@@ -146,22 +147,16 @@ def main():
                 send_message(bot, message)
         except ServerError as er:
             message = API_ERROR.format(err=er)
-            last_message, current_timestamp = _handler_exceptions(bot, message,
-                                                                  last_message)
         except KeysAnswerError as er:
             message = KEY_ERROR.format(err=er)
-            last_message, current_timestamp = _handler_exceptions(bot, message,
-                                                                  last_message)
         except StatusHomeworkError as er:
             message = STATUS_ERROR.format(err=er)
-            last_message, current_timestamp = _handler_exceptions(bot, message,
-                                                                  last_message)
         except Exception as er:
             message = UNKNOWN_ERROR.format(err=er)
-            last_message, current_timestamp = _handler_exceptions(bot, message,
-                                                                  last_message)
-        finally:
-            time.sleep(RETRY_TIME)
+        else:
+            continue
+        last_message, current_timestamp = _handler_exceptions(
+            bot, message, last_message)
 
 
 if __name__ == '__main__':
