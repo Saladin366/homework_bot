@@ -29,6 +29,7 @@ HOMEWORK_VERDICTS = {
     'rejected': 'Работа проверена, в ней нашлись ошибки.'
 }
 
+REQUEST_OK = f'Запрос к {ENDPOINT} прошёл успешно.'
 STATUS_CHANGE = 'Изменился статус проверки работы "{name}". {value}'
 MESSAGE_OK = 'Бот отправил сообщение: "{mes}"'
 MESSAGE_ERROR = 'Сбой при отправке сообщения: "{mes}". Текст ошибки: "{err}".'
@@ -77,6 +78,7 @@ def get_api_answer(url, current_timestamp):
     payload = {'from_date': current_timestamp}
     try:
         response = requests.get(url, headers=HEADERS, params=payload)
+        logging.info(REQUEST_OK)
     except Exception as er:
         raise ServerError(er)
     if response.status_code != HTTPStatus.OK:
