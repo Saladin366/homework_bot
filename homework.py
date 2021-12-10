@@ -29,6 +29,7 @@ HOMEWORK_VERDICTS = {
     'rejected': 'Работа проверена, в ней нашлись ошибки.'
 }
 
+START_OK = 'Бот запущен'
 REQUEST_OK = f'Запрос к {ENDPOINT} прошёл успешно.'
 STATUS_CHANGE = 'Изменился статус проверки работы "{name}". {value}'
 MESSAGE_OK = 'Бот отправил сообщение: "{mes}"'
@@ -136,6 +137,7 @@ def main():
             logging.critical(START_ERROR.format(param=par))
             sys.exit()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    logging.info(START_OK)
     current_timestamp = int(time.time())
     last_message = ''
     while True:
